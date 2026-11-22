@@ -1,0 +1,627 @@
+**Target file:** `tasks/prd-ai-room-object-visualizer.md`
+
+# PRD: AI Room & Object Visualizer
+
+## 1. Introduction / Overview
+
+The **AI Room & Object Visualizer** is a lightweight, serverless web application that lets users preview how any physical object looks inside a real-world space before buying, moving, or staging it. A user uploads a photo of a background scene (such as a living room, office desk, kitchen counter, or patio), selects or uploads an image of **any object** (furniture, decor, plants, appliances, artwork, or everyday items), optionally adds a short placement instruction, selects how many variations to generate via a slider (default `2`), and receives photorealistic composite images in under 30 seconds.
+
+By default, the AI automatically places the object in a contextually appropriate location with physically plausible scale, perspective, lighting direction, reflections, and contact shadows—no manual masking, 3D modeling, or photo editing required. This MVP is scoped as an unrestricted demo build (no login, no payment wall, and no usage limits) focused on speed, visual realism, and seamless desktop-to-mobile usability.
+
+---
+
+## 2. Goals
+
+* **Fast end-to-end visualization:** Complete a full generation batch (default 2 variations) in **under 30 seconds** from clicking "Generate" to displaying results.
+* **High physical realism by default:** Ensure generated images preserve the original room architecture and object identity while matching perspective, scale, ambient lighting, and contact shadows—even when no text prompt is provided.
+* **Flexible object support:** Support **any** user-uploaded object image alongside a diverse built-in catalog of 8–10 sample objects across multiple categories (not limited to furniture).
+* **Zero-friction demo experience:** Allow immediate usage on both desktop and mobile browsers without sign-up, account creation, or rate-limit blocks.
+* **Controlled infrastructure cost:** Automatically compress oversized uploads before AI inference and auto-expire all temporary uploaded and generated images after 24 hours.
+* **Reliable export:** Enable one-click high-resolution image downloads (PNG/JPG) on desktop and mobile browsers.
+
+---
+
+## 3. User Stories
+
+### US-001: Scaffold serverless project and environment configuration
+
+**Description:** As a developer, I want a configured TypeScript frontend and serverless backend workspace with validated environment variables so that features can be built and deployed cleanly without always-on servers.
+
+**Acceptance Criteria:**
+
+* [ ] Repository initialized with React + TypeScript + Vite + Tailwind CSS frontend and serverless API routes (Cloudflare Workers/Pages Functions or Vercel Functions).
+* [ ] `.env.example` documents all required secrets (`GEMINI_API_KEY`, storage bucket credentials/bindings, optional fallback provider key).
+* [ ] Startup/request config validator fails fast with a clear server log if required API keys are missing.
+* [ ] `GET /api/health` returns `200 OK` with `{ "status": "ok" }`.
+* [ ] Typecheck and lint pass.
+
+### US-002: Upload and preview background scene image
+
+**Description:** As a user, I want to upload a photo of my room or environment via drag-and-drop or file picker so that I can use it as the base scene for visualization.
+
+**Acceptance Criteria:**
+
+* [ ] Dropzone accepts a single image via drag-and-drop or click-to-browse (plus native camera/gallery picker on mobile).
+* [ ] Validates file type (`image/jpeg`, `image/png`, `image/webp`) and raw file size (up to 10MB) immediately on selection.
+* [ ] Displays an inline, clear error banner for invalid formats or files exceeding 10MB without crashing or clearing valid state elsewhere.
+* [ ] Shows an instant preview thumbnail with filename, dimensions, and "Replace" and "Remove" buttons.
+* [ ] Typecheck and lint pass.
+* [ ] Verify in browser using dev-browser skill.
+
+### US-003: Compress and optimize uploads before API submission
+
+**Description:** As a user on mobile or desktop, I want large high-megapixel photos automatically resized and compressed before upload so that generations are fast and never fail due to payload limits.
+
+**Acceptance Criteria:**
+
+* [ ] Client-side utility resizes any image whose longest edge exceeds `2048px` while preserving aspect ratio and fixing EXIF orientation (preventing sideways mobile photos).
+* [ ] Compresses uploaded images to WebP/JPEG targeting under `2MB` per image while preserving visual clarity for AI reference fidelity.
+* [ ] Falls back safely to the original file (if under 10MB) if browser canvas compression fails.
+* [ ] Unit tests verify aspect-ratio preservation, max-dimension clamping, and file-size reduction.
+* [ ] Typecheck and lint pass.
+
+### US-004: Select an object via custom upload or diverse preset catalog
+
+**Description:** As a user, I want to either upload a photo of any object or pick one from a pre-loaded sample catalog so that I can test the visualizer immediately or use my own items.
+
+**Acceptance Criteria:**
+
+* [ ] Object input section offers two clearly labeled tabs/modes: **Upload Object** and **Sample Catalog**.
+* [ ] **Upload Object** supports drag-and-drop and file picker for any object image (`JPG`, `PNG`, `WEBP`, up to 10MB) with instant preview and "Replace/Remove" actions.
+* [ ] **Sample Catalog** displays 8–10 curated, diverse everyday objects (e.g., modern sofa, mid-century accent chair, floor lamp, potted monstera plant, wooden coffee table, framed abstract wall art, espresso machine, ceramic table vase) with thumbnail, title, and category tag.
+* [ ] Selecting a catalog item highlights its card with an active ring/checkmark; switching to custom upload clears the catalog selection (and vice versa) so exactly one object is active at a time.
+* [ ] Typecheck and lint pass.
+* [ ] Verify in browser using dev-browser skill.
+
+### US-005: Configure variation count slider and optional placement instructions
+
+**Description:** As a user, I want to choose how many variations to generate using a slider and optionally type placement instructions so that I can either let the AI decide automatically or guide where and how the object appears.
+
+**Acceptance Criteria:**
+
+* [ ] Variation slider allows selecting integer values from `1` to `3` (step `1`), **defaulting to `2**`, with a visible live numeric label (e.g., `Variations: 2`).
+* [ ] Optional text input ("Placement Instructions (Optional)") accepts up to `300` characters with a visible character counter and helpful placeholder text (e.g., `"Leave blank for automatic placement, or try: 'Place against the left wall facing the window'"`).
+* [ ] Leaving the text input blank is fully valid and triggers automatic intelligent placement.
+* [ ] Slider and input are fully keyboard-accessible (`aria-label`, `aria-valuemin`, `aria-valuemax`, `aria-valuenow`).
+* [ ] Typecheck and lint pass.
+* [ ] Verify in browser using dev-browser skill.
+
+### US-006: Configure temporary 24-hour object storage
+
+**Description:** As a developer, I want temporary storage for uploaded and generated images with automatic 24-hour expiration so that storage costs do not accumulate over time.
+
+**Acceptance Criteria:**
+
+* [ ] Temporary bucket (Cloudflare R2) created with a lifecycle rule expiring all objects under `uploads/` and `outputs/` after `1 day` (24 hours).
+* [ ] Backend helper uploads generated image buffers with unique UUID keys (`outputs/{jobId}/{variationIndex}.png`) and serves them via a clean asset route (`GET /api/assets/:jobId/:filename`).
+* [ ] Asset route sets `Cache-Control: private, max-age=3600` and supports `?download=1` to return `Content-Disposition: attachment; filename="visualizer-variation-{n}.png"`.
+* [ ] Missing or expired assets return `404 Not Found` with a structured JSON error.
+* [ ] Typecheck and lint pass.
+
+### US-007: Build `/api/generate` endpoint with parallel AI image composition
+
+**Description:** As a developer, I want a backend endpoint that takes the background image, object image (or preset ID), variation count, and optional instructions, and calls the AI image model in parallel so that realistic variations return in under 30 seconds.
+
+**Acceptance Criteria:**
+
+* [ ] `POST /api/generate` accepts `multipart/form-data` containing `background` (File), either `object` (File) or `presetId` (string), `variationCount` (`1 | 2 | 3`, default `2`), and optional `instructions` (string, max 300 chars).
+* [ ] Server validates file MIME types via magic bytes (not just file extensions), enforces max 10MB limit, and sanitizes the `instructions` text.
+* [ ] Constructs a structured realism prompt that enforces physical grounding, perspective alignment, scale proportion, ambient light/shadow integration, occlusion, and strict preservation of the rest of the background scene.
+* [ ] Fires `variationCount` concurrent requests via `Promise.allSettled` (each with a distinct subtle angle/placement seed directive when generating multiple variations) to keep total latency under 30 seconds.
+* [ ] Returns `200 OK` with an array of successfully generated variation URLs, metadata, and any partial-failure warnings; returns structured `400`/`422`/`502`/`504` errors if all variations fail.
+* [ ] No artificial IP rate limiting or auth gate is applied in MVP.
+* [ ] Typecheck and lint pass.
+
+### US-008: Implement generation trigger, loading feedback, and duplicate submission lock
+
+**Description:** As a user, I want clear visual feedback while my images are generating and protection against accidental double clicks so that I know the app is working and do not trigger duplicate API calls.
+
+**Acceptance Criteria:**
+
+* [ ] "Generate Variations" button remains disabled until both a valid background image and a valid object (uploaded or preset) are selected.
+* [ ] Clicking "Generate Variations" disables the Generate button, variation slider, instructions input, and upload controls while the request is in flight.
+* [ ] Displays a responsive loading skeleton grid matching the chosen `variationCount` (1, 2, or 3 cards) along with a phased status indicator (e.g., `"Uploading images..."` -> `"Matching lighting & perspective..."` -> `"Finalizing variations..."`) and elapsed timer.
+* [ ] Re-enables all controls cleanly once the request succeeds, fails, or times out.
+* [ ] Typecheck and lint pass.
+* [ ] Verify in browser using dev-browser skill.
+
+### US-009: Display results gallery and full-screen lightbox viewer
+
+**Description:** As a user, I want to browse my generated variations in a clean layout and click any image to inspect it full-screen so that I can carefully evaluate lighting, shadows, and placement realism.
+
+**Acceptance Criteria:**
+
+* [ ] Desktop displays generated variations in a responsive multi-column grid; mobile displays a clean single-column stack or swipeable horizontal carousel with pagination dots.
+* [ ] Each card shows the variation image, a label (`Variation 1`, `Variation 2`, etc.), a quick "View Full Screen" trigger, and a "Download" button.
+* [ ] Clicking any variation opens a full-screen lightbox modal displaying the high-resolution image with Prev/Next navigation arrows, keyboard support (`Escape` to close, `ArrowLeft`/`ArrowRight` to navigate), a "Download" button, and an optional "Hold to compare original room" toggle button.
+* [ ] Typecheck and lint pass.
+* [ ] Verify in browser using dev-browser skill.
+
+### US-010: Download high-resolution results and regenerate batches
+
+**Description:** As a user, I want to download my favorite generated images in high resolution and click "Regenerate" to get a fresh batch without re-uploading my photos.
+
+**Acceptance Criteria:**
+
+* [ ] Clicking "Download" on a result card or inside the lightbox saves the full-resolution image file (`visualizer-variation-1.png`) directly to the user's device without opening a dead tab.
+* [ ] Clicking "Regenerate" sends a new `POST /api/generate` request using the current background image, object selection, slider value, and instructions (which the user can tweak before regenerating).
+* [ ] Clicking "Start Over" clears inputs and results and returns cleanly to Step 1.
+* [ ] Typecheck and lint pass.
+* [ ] Verify in browser using dev-browser skill.
+
+### US-011: Graceful error handling and mobile responsive polish
+
+**Description:** As a user on either phone or desktop, I want clear, actionable error messages when anything goes wrong and a layout that works smoothly on small screens.
+
+**Acceptance Criteria:**
+
+* [ ] Handles and displays plain-English recovery banners for: unsupported file type, file over 10MB, network offline, API timeout (over 45s), AI content-safety refusal, and partial batch failures (e.g., `"2 of 3 variations generated"`).
+* [ ] Every error state includes a working recovery action ("Try Again" or "Choose Another Image") and never leaves the UI stuck in a loading state.
+* [ ] Full 3-step workflow verified at mobile (`375x812`), tablet (`768x1024`), and desktop (`1440x900`) viewports with zero horizontal overflow and touch targets of at least `44x44px`.
+* [ ] Typecheck and lint pass.
+* [ ] Verify in browser using dev-browser skill.
+
+---
+
+## 4. Functional Requirements
+
+* **FR-1 (Background Upload):** The system must allow users to upload a single background scene image via drag-and-drop or file picker. Supported formats: `JPG`, `PNG`, `WEBP`; maximum raw file size: `10MB`. Must render an instant preview with "Replace" and "Remove" controls.
+* **FR-2 (Object Input — Dual Mode):** The system must allow users to provide **any** target object via two mutually exclusive modes:
+1. **Custom Upload:** Upload any object photo (`JPG`, `PNG`, `WEBP`, max `10MB`) with instant preview and "Replace/Remove" controls.
+2. **Sample Catalog:** Select from 8–10 pre-loaded sample objects spanning multiple categories (furniture, lighting, plants, wall art, tabletop/appliances) stored as static optimized assets.
+
+
+* **FR-3 (Variation Count Slider):** The system must provide a numeric range slider allowing the user to select between `1` and `3` variations (step `1`), with the default value set to `2`.
+* **FR-4 (Optional Placement Instructions):** The system must provide an optional text field (max `300` characters) where users can specify placement, orientation, or styling preferences (e.g., `"Place on the wooden table near the window"`). When left empty, the system must automatically determine the most natural position, orientation, and scale.
+* **FR-5 (Physics & Realism Directive):** Every AI generation request must enforce realistic physical integration: matching room perspective and horizon line, proportional real-world scale, consistent ambient and directional lighting, grounded contact/cast shadows, natural reflections/occlusion, and preservation of unaltered room regions.
+* **FR-6 (AI Generation Trigger):** The "Generate Variations" button must remain disabled until both a valid background image and a valid object input are present. Clicking it submits both images, the variation count, and optional instructions to the serverless backend.
+* **FR-7 (Parallel Variation Generation):** When generating multiple variations (2 or 3), the backend must execute AI generation requests concurrently with distinct subtle compositional variation cues (e.g., slight angle, positioning, or styling nuance) so each returned image is meaningfully distinct while keeping total response time under 30 seconds.
+* **FR-8 (Asynchronous UI & Duplicate Lock):** While a generation request is in flight, the UI must display skeleton placeholders matching the selected variation count, show clear progress status text, and disable all form inputs and submit buttons to prevent duplicate submissions.
+* **FR-9 (Results Gallery & Full-Screen Viewer):** The system must render generated variations in a clean grid (desktop) or swipeable/stacked gallery (mobile). Clicking any variation must open a full-screen lightbox supporting keyboard/arrow navigation and before/after comparison against the uploaded background.
+* **FR-10 (Download & Regenerate):** Users must be able to download any individual generated image in high resolution (`PNG` or `JPG`) and click "Regenerate" to generate a fresh batch using the same (or newly edited) inputs without re-uploading images.
+* **FR-11 (Image Optimization):** Oversized uploads must be resized (max `2048px` longest edge) and compressed on the client before transmission, with server-side validation as a safety net.
+* **FR-12 (Temporary Storage & Auto-Cleanup):** Uploaded and generated images stored on the backend must automatically expire and delete after `24 hours` via storage lifecycle rules.
+* **FR-13 (Unrestricted Demo Access):** No user authentication, account creation, payment checks, or IP rate limiting shall block requests in the MVP demo build.
+* **FR-14 (Graceful Error Handling):** The system must catch and present human-readable error messages with retry options for invalid formats, oversized files, timeouts, network errors, AI safety refusals, and partial generation failures.
+
+---
+
+## 5. Non-Goals (Out of Scope)
+
+* **3D modeling, AR/VR, or CAD scaling:** No WebXR/AR camera overlays, 3D mesh reconstruction, or exact centimeter/inch dimension inputs.
+* **Multi-object placement:** Users cannot place multiple objects (e.g., sofa + rug + lamp) in a single generation pass.
+* **Manual in-app photo editing:** No cropping tools, color grading sliders, eraser brushes, or manual mask painting canvases.
+* **User accounts & persistence:** No login, OAuth, user profiles, saved galleries, or project history beyond the active browser session and 24-hour temporary asset URLs.
+* **Payments, credits, or rate limits:** No Stripe/billing integration, credit counters, or IP throttling in this MVP demo.
+* **Video or 360-degree room tours:** Static 2D image inputs and static 2D image outputs only.
+
+---
+
+## 6. Design Considerations
+
+### Layout & Visual Flow (Single-Page 3-Step Workspace)
+
+Use a clean, distraction-free single-page layout so users see the entire workflow immediately:
+
+1. **Header Bar:** App title ("AI Room & Object Visualizer"), brief 1-line subtitle, and a "Start Over" button (visible once inputs or results exist).
+2. **Input Workspace (2-column split on desktop, vertical stack on mobile):**
+* **Step 1 Card — Upload Scene:** Large dashed dropzone (`min-h-[260px]`) showing accepted formats (`JPG, PNG, WEBP • Max 10MB`). Once uploaded, switches to a crisp full-bleed `object-contain` preview with floating "Replace" and "Remove" action pills.
+* **Step 2 Card — Choose Object:** Segmented tab toggle (`Upload Any Object` | `Sample Catalog`).
+* *Upload tab:* Identical dropzone UX to Step 1.
+* *Catalog tab:* Scrollable 2x4 (mobile) / 3x3 (desktop) grid of 8–10 diverse sample items on clean neutral backgrounds with labels.
+
+
+
+
+3. **Controls Bar (Step 3 — Configure & Generate):**
+* **Variation Slider:** Labeled `Variations (1–3)` with snap ticks `1`, `2`, `3` and default handle at `2`.
+* **Optional Instructions Input:** Single-line or expandable 2-row textarea with `0/300` counter and subtle helper text: *"Optional: Leave blank for automatic realistic placement."*
+* **Primary CTA:** High-contrast `"Generate 2 Variations"` button (dynamically reflects the slider count; disabled with clear muted styling until Steps 1 and 2 are complete).
+
+
+4. **Results Section (appears below workspace and auto-scrolls smoothly into view on generation):**
+* Loading state: Pulsing skeleton cards matching the selected count + progress status banner.
+* Success state: Responsive grid (2 columns for 2 outputs, 3 columns on wide desktop for 3 outputs; swipeable carousel/stack on mobile) with top-right **"Regenerate"** button.
+* Each card has hover/always-visible mobile actions: **Expand (Full Screen)** and **Download**.
+
+
+5. **Full-Screen Lightbox Modal:**
+* Dark translucent backdrop (`bg-black/90`), centered high-res image, left/right arrows, close (`X`) button, **"Hold to Compare Original"** button (toggles back to the raw background photo while pressed), and **"Download HD"** button.
+
+
+
+---
+
+## 7. Technical Considerations (Complete End-to-End Implementation Blueprint)
+
+### 7.1 Recommended Serverless Architecture & Tech Stack
+
+This architecture avoids always-on VMs and Docker containers, deploys directly from Git, and handles parallel image inference cleanly:
+
+| Layer | Technology Choice | Rationale |
+| --- | --- | --- |
+| **Frontend Framework** | **React 19 + TypeScript + Vite** | Fast dev loop, strict type safety, zero unnecessary SSR complexity for a stateless interactive tool. |
+| **Styling & UI Primitives** | **Tailwind CSS v4 + Lucide Icons + Radix UI (Dialog/Slider)** | Accessible slider and full-screen lightbox out of the box; responsive utility layout. |
+| **Client Image Processing** | **`browser-image-compression` (or HTML5 Canvas + `createImageBitmap`)** | Resizes photos to max `2048px`, fixes mobile EXIF rotation, cuts upload payload by 70–85%. |
+| **Hosting & Serverless API** | **Cloudflare Workers (with Static Assets / Pages)** *or* **Vercel Serverless Functions** | Zero idle cost, global edge delivery, direct bindings to object storage. Set function timeout to **60 seconds** (safety buffer over the 30s target). |
+| **Temporary Object Storage** | **Cloudflare R2** (zero egress fees) [cite: 1.3.3] | Native 1-day object lifecycle expiration removes temporary files automatically within 24 hours. |
+| **Primary AI Image Model** | **Google Gemini API — `gemini-nano-banana-2.1**` (`@google/genai` SDK) | Supports multi-image reference composition (up to 14 reference images, up to 6 high-fidelity object images), built-in Thinking mode for spatial/compositional logic, 1K/2K/4K output, and Flash-level speed. |
+| **Fallback AI Image Model** | **OpenAI Images API — `gpt-image-2.6-sunburst**` (or `gpt-image-2.6-flare`) | Active 2026 replacement for the retired `gpt-image-1` model; supports multi-image editing and high-fidelity composition. |
+
+---
+
+### 7.2 AI Model Integration & Physics-Realism Prompt Strategy
+
+#### Provider Abstraction (`server/lib/ai-provider.ts`)
+
+Abstract image composition behind a single TypeScript interface so models can be swapped without touching route logic:
+
+```ts
+export interface CompositeRequest {
+  backgroundBytes: Uint8Array;
+  backgroundMime: string;
+  objectBytes: Uint8Array;
+  objectMime: string;
+  userInstructions?: string;
+  variationIndex: number; // 0, 1, or 2
+  totalVariations: number;
+}
+
+export interface CompositeResult {
+  imageBytes: Uint8Array;
+  mimeType: 'image/png' | 'image/jpeg';
+  width?: number;
+  height?: number;
+}
+
+```
+
+#### Gemini API (`gemini-nano-banana-2.1`) Call Configuration
+
+* Pass **both** images as inline base64 parts (Image 1 = background scene, Image 2 = target object) alongside the structured system/user prompt in a single `generateContent` call with `responseModalities: ["IMAGE"]` and output resolution set to `2K` (crisp high-resolution downloads while staying fast).
+* Run `variationCount` requests **concurrently** using `Promise.allSettled`. Each variation receives a distinct variation directive so outputs are genuinely varied rather than near-duplicates.
+
+#### Prompt Engineering Template (Physics, Lighting & Perspective Enforcement)
+
+```text
+You are an expert architectural photographer and photorealistic compositor.
+
+INPUT IMAGES:
+- Image 1 is the BACKGROUND SCENE (room or environment).
+- Image 2 is the TARGET OBJECT to be placed into Image 1.
+
+CORE TASK:
+Place the exact target object from Image 2 naturally into the scene from Image 1.
+
+STRICT REALISM & PHYSICS RULES:
+1. Preserve Background Integrity: Keep all existing walls, floors, windows, existing furniture, camera framing, and aspect ratio from Image 1 intact. Only modify the space directly occupied or occluded by the newly placed object and its shadows/reflections.
+2. Preserve Object Identity: Keep the exact shape, material, texture, colors, and details of the object in Image 2. Remove any original background from Image 2 cleanly.
+3. Realistic Scale & Grounding: Size the object proportionally to surrounding elements in Image 1 (doors, floors, tables, ceilings). The object MUST rest firmly on a physically appropriate surface (floor, table, wall, or counter depending on the object type)—never floating, clipping through walls, or defying gravity.
+4. Perspective & Lens Match: Match the camera height, vanishing points, focal length, and subtle depth-of-field of Image 1.
+5. Lighting, Shadows & Reflections: Match the scene's light sources, color temperature, and ambient brightness. Cast accurate soft contact shadows directly beneath/behind the object and subtle directional shadows matching existing shadows in Image 1.
+
+PLACEMENT GUIDANCE:
+{{USER_INSTRUCTIONS_OR_AUTO}}
+
+VARIATION DIRECTIVE ({{VARIATION_INDEX}} of {{TOTAL_VARIATIONS}}):
+{{VARIATION_CUE}}
+
+```
+
+* **When `userInstructions` is blank:**
+`USER_INSTRUCTIONS_OR_AUTO` = `"No manual placement instruction was provided. Analyze Image 1 and choose the single most natural, visually balanced, and functional placement location for this type of object."`
+* **When `userInstructions` is provided:**
+`USER_INSTRUCTIONS_OR_AUTO` = `"Follow this user placement instruction faithfully while obeying all physics and realism rules above: \"<sanitized_user_instructions>\""`
+* **Variation Cues (`VARIATION_CUE`):**
+* Index 0: `"Primary natural composition: place the object in the most intuitive focal position with balanced framing."`
+* Index 1: `"Alternative angle/position: subtly adjust the object's viewing angle, orientation, or secondary placement spot within the scene for a distinct look."`
+* Index 2: `"Alternative staging nuance: place the object with a slightly different distance/alignment or subtle lighting interaction while remaining completely natural."`
+
+
+
+---
+
+### 7.3 Image Optimization & Validation Pipeline
+
+1. **Client-Side Pre-Processing (`src/lib/image-optimizer.ts`):**
+* Validate MIME type (`image/jpeg`, `image/png`, `image/webp`) and raw size (`<= 10 * 1024 * 1024` bytes).
+* Use `browser-image-compression` with:
+```ts
+{
+  maxSizeMB: 1.8,
+  maxWidthOrHeight: 2048,
+  useWebWorker: true,
+  fileType: 'image/webp', // or 'image/jpeg' for universal compatibility
+  initialQuality: 0.88,
+  exifOrientation: undefined // auto-normalizes rotation
+}
+
+```
+
+
+* Retain a local `URL.createObjectURL(file)` preview and revoke object URLs on unmount/replace to avoid memory leaks.
+
+
+2. **Server-Side Validation (`server/lib/validate.ts`):**
+* Inspect first 12 magic bytes of uploaded buffers:
+* JPEG: `FF D8 FF`
+* PNG: `89 50 4E 47`
+* WEBP: `52 49 46 46 ... 57 45 42 50`
+
+
+* Reject anything outside those signatures with `400 INVALID_FILE_TYPE`.
+* Enforce `size <= 10MB` per file; return `413 FILE_TOO_LARGE` if exceeded.
+* Trim and strip control characters from `instructions`; reject if length exceeds `300` chars.
+
+
+
+---
+
+### 7.4 Temporary Storage & 24-Hour Auto-Deletion
+
+* **Bucket:** Cloudflare R2 bucket named `visualizer-temp`.
+* **Lifecycle Policy:** Configure an automatic 1-day expiration rule on the bucket via Wrangler CLI or Cloudflare Dashboard [cite: 1.3.2]:
+```bash
+npx wrangler r2 bucket lifecycle add visualizer-temp \
+  --name "expire-temp-assets-24h" \
+  --expire-days 1
+
+```
+
+
+Cloudflare R2 removes expired objects typically within 24 hours of expiration, and carries zero egress fees for serving and downloading generated images [cite: 1.3.3].
+* **Key Structure:**
+* `outputs/{jobId}/variation-1.png`
+* `outputs/{jobId}/variation-2.png`
+* `outputs/{jobId}/variation-3.png`
+*(Note: Uploaded inputs can be passed directly in-memory to the AI API without even writing them to R2 unless debugging/logging is enabled, further minimizing storage writes and latency.)*
+
+
+
+---
+
+### 7.5 Complete API Contract
+
+#### 1. `GET /api/presets`
+
+Returns the list of pre-loaded sample objects.
+
+```json
+{
+  "presets": [
+    {
+      "id": "modern-beige-sofa",
+      "name": "Modern Linen Sofa",
+      "category": "Furniture",
+      "thumbnailUrl": "/presets/modern-beige-sofa-thumb.webp",
+      "imageUrl": "/presets/modern-beige-sofa.png"
+    },
+    {
+      "id": "potted-monstera",
+      "name": "Potted Monstera Plant",
+      "category": "Plants",
+      "thumbnailUrl": "/presets/potted-monstera-thumb.webp",
+      "imageUrl": "/presets/potted-monstera.png"
+    }
+  ]
+}
+
+```
+
+*(Include 8–10 diverse presets: Modern Linen Sofa, Mid-Century Accent Chair, Oak Coffee Table, Arc Floor Lamp, Potted Monstera Plant, Framed Abstract Wall Art, Stainless Espresso Machine, Sculptural Ceramic Vase.)*
+
+#### 2. `POST /api/generate`
+
+* **Content-Type:** `multipart/form-data`
+* **Fields:**
+* `background`: `File` (required, JPG/PNG/WEBP, max 10MB)
+* `object`: `File` (required if `presetId` is omitted, JPG/PNG/WEBP, max 10MB)
+* `presetId`: `string` (required if `object` is omitted; validated against known preset allowlist to prevent path traversal)
+* `variationCount`: `string` (`"1"`, `"2"`, or `"3"`; defaults to `"2"`)
+* `instructions`: `string` (optional, max 300 characters)
+
+
+* **Success Response (`200 OK`):**
+
+```json
+{
+  "jobId": "c8f1a2d4-7b9e-4c11-9e0a-123456789abc",
+  "durationMs": 14820,
+  "requestedCount": 2,
+  "variations": [
+    {
+      "index": 1,
+      "imageUrl": "/api/assets/c8f1a2d4-7b9e-4c11-9e0a-123456789abc/variation-1.png",
+      "downloadUrl": "/api/assets/c8f1a2d4-7b9e-4c11-9e0a-123456789abc/variation-1.png?download=1",
+      "mimeType": "image/png"
+    },
+    {
+      "index": 2,
+      "imageUrl": "/api/assets/c8f1a2d4-7b9e-4c11-9e0a-123456789abc/variation-2.png",
+      "downloadUrl": "/api/assets/c8f1a2d4-7b9e-4c11-9e0a-123456789abc/variation-2.png?download=1",
+      "mimeType": "image/png"
+    }
+  ],
+  "warnings": []
+}
+
+```
+
+*(If 2 of 3 succeed, return `200 OK` with the 2 images and `warnings: ["1 variation could not be generated. You can regenerate for another attempt."]`, rather than discarding good results.)*
+
+* **Error Response (`4xx` / `5xx`):**
+
+```json
+{
+  "error": {
+    "code": "AI_GENERATION_FAILED",
+    "message": "We couldn't generate images for this combination. Try a clearer photo or adjust your placement instructions.",
+    "retryable": true
+  }
+}
+
+```
+
+#### 3. `GET /api/assets/:jobId/:filename`
+
+* Streams the image from R2 with `Content-Type: image/png`.
+* If `?download=1` is present, adds `Content-Disposition: attachment; filename="ai-visualizer-${filename}"`.
+* Returns `404` if the asset has expired after 24 hours or does not exist.
+
+---
+
+### 7.6 Frontend State Machine & Component Architecture
+
+```ts
+type AppStatus = 'idle' | 'optimizing' | 'generating' | 'success' | 'error';
+
+interface VisualizerState {
+  backgroundFile: File | null;
+  backgroundPreviewUrl: string | null;
+  objectMode: 'upload' | 'preset';
+  objectFile: File | null;
+  objectPreviewUrl: string | null;
+  selectedPresetId: string | null;
+  variationCount: 1 | 2 | 3; // default: 2
+  instructions: string;      // default: ""
+  status: AppStatus;
+  loadingPhase: string;
+  results: VariationItem[];
+  warnings: string[];
+  errorMessage: string | null;
+  lightboxIndex: number | null;
+}
+
+```
+
+**Component Tree:**
+
+* `App.tsx`
+* `Header.tsx` (Logo, title, "Start Over" button)
+* `WorkspaceGrid.tsx`
+* `ImageDropzone.tsx` (Reused for Step 1 Background and Step 2 Custom Object upload)
+* `ObjectSelectorCard.tsx` (Mode tabs + `ImageDropzone` + `PresetCatalogGrid.tsx`)
+
+
+* `GenerationControls.tsx` (Variation count slider `1–3`, optional instructions textarea, dynamic primary CTA button)
+* `ResultsSection.tsx`
+* `LoadingSkeletonGrid.tsx` (Progress stages + elapsed timer)
+* `ErrorBanner.tsx` (Inline error display + retry action)
+* `ResultsGallery.tsx` (Desktop grid + mobile responsive gallery + "Regenerate" button)
+* `LightboxModal.tsx` (Full-screen viewer, keyboard nav, hold-to-compare original, HD download)
+
+
+
+
+
+---
+
+### 7.7 Project Directory Structure
+
+```text
+ai-room-object-visualizer/
+├── tasks/
+│   └── prd-ai-room-object-visualizer.md
+├── public/
+│   └── presets/                     # 8–10 curated transparent/clean-bg sample objects + thumbs
+├── src/
+│   ├── components/
+│   │   ├── Header.tsx
+│   │   ├── ImageDropzone.tsx
+│   │   ├── ObjectSelectorCard.tsx
+│   │   ├── PresetCatalogGrid.tsx
+│   │   ├── GenerationControls.tsx
+│   │   ├── LoadingSkeletonGrid.tsx
+│   │   ├── ResultsGallery.tsx
+│   │   ├── LightboxModal.tsx
+│   │   └── ErrorBanner.tsx
+│   ├── lib/
+│   │   ├── api-client.ts            # Typed fetch wrapper with AbortController timeout (45s)
+│   │   ├── image-optimizer.ts       # Client-side resize/EXIF/compression
+│   │   └── presets.ts               # Shared preset metadata
+│   ├── types/
+│   │   └── visualizer.ts
+│   ├── App.tsx
+│   └── main.tsx
+├── functions/ (or api/)             # Serverless API endpoints
+│   ├── api/
+│   │   ├── health.ts
+│   │   ├── presets.ts
+│   │   ├── generate.ts
+│   │   └── assets/[jobId]/[filename].ts
+│   └── lib/
+│       ├── ai-provider.ts           # Gemini Nano Banana 2.1 + optional OpenAI adapter
+│       ├── prompt-builder.ts        # Physics/realism prompt & variation cues
+│       ├── storage.ts               # Cloudflare R2 put/get helper
+│       └── validate.ts              # Magic-byte MIME + size + text sanitization
+├── wrangler.toml                    # Cloudflare Workers/Pages + R2 binding config
+├── .env.example
+├── package.json
+└── tsconfig.json
+
+```
+
+---
+
+### 7.8 Environment Variables & Deployment Checklist
+
+**Required `.env.example`:**
+
+```bash
+# Primary AI Provider (Google Gemini API - Nano Banana 2.1)
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_IMAGE_MODEL=gemini-nano-banana-2.1
+
+# Optional Fallback Provider (OpenAI Images API)
+# OPENAI_API_KEY=your_openai_api_key_here
+# OPENAI_IMAGE_MODEL=gpt-image-2.6-sunburst
+
+# Storage (bound automatically via wrangler.toml on Cloudflare R2)
+R2_BUCKET_NAME=visualizer-temp
+
+# App Config
+MAX_UPLOAD_MB=10
+GENERATION_TIMEOUT_MS=45000
+
+```
+
+**Deployment Steps:**
+
+1. Create R2 bucket: `npx wrangler r2 bucket create visualizer-temp`
+2. Apply 24-hour auto-expiration rule: `npx wrangler r2 bucket lifecycle add visualizer-temp --name "expire-24h" --expire-days 1` [cite: 1.3.2]
+3. Set production secret: `npx wrangler secret put GEMINI_API_KEY`
+4. Build and deploy: `npm run build && npx wrangler deploy`
+5. Smoke test on both desktop and mobile browsers (upload phone camera photo + preset object + download).
+
+---
+
+### 7.9 Error Handling Matrix
+
+| Failure Scenario | HTTP Code / Trigger | User-Facing Message | Recovery Behavior |
+| --- | --- | --- | --- |
+| Unsupported file format (e.g., GIF, HEIC, PDF) | Client check / `400 INVALID_FILE_TYPE` | `"Please upload a JPG, PNG, or WEBP image."` | Rejects file cleanly; preserves existing valid input in other step. |
+| Oversized file (over 10MB) | Client check / `413 FILE_TOO_LARGE` | `"Image must be 10MB or smaller. Please choose a smaller photo."` | Rejects file cleanly; no upload sent. |
+| AI safety filter refusal | `422 CONTENT_BLOCKED` | `"The AI couldn't process one of these images due to safety guidelines. Try a different photo or rephrase your instructions."` | Re-enables controls; keeps inputs visible for quick swap. |
+| Partial variation failure (e.g., 1 of 2 fails) | `200 OK` with `warnings[]` | `"Generated 1 of 2 variations. Click Regenerate to try again."` | Displays successful image(s) with non-blocking warning banner. |
+| Request timeout (over 45 seconds) | Client `AbortController` / `504 TIMEOUT` | `"Generation took longer than expected. Please try again."` | Cancels loading state; "Try Again" button retries immediately. |
+| Network / AI provider outage | `502 UPSTREAM_ERROR` / Fetch error | `"Couldn't reach the image generator right now. Please try again in a moment."` | Re-enables controls; inputs remain intact. |
+| Expired download link (after 24 hours) | `404 NOT_FOUND` | `"This temporary image has expired (images are deleted after 24 hours). Click Regenerate to create new ones."` | Prompts user to regenerate. |
+
+---
+
+## 8. Success Metrics
+
+* **Generation latency:** Median end-to-end generation time for the default `2` variations is **under 25 seconds**, and p95 completes in **under 30 seconds**.
+* **Visual & physical realism:** At least **85%** of test generations across diverse rooms and objects (furniture, plants, lamps, tabletop items) pass a manual realism check (grounded contact shadows, accurate perspective, natural scale, intact background) with zero manual instructions.
+* **Instruction adherence:** At least **85%** of generations with custom text hints accurately reflect the requested position or orientation.
+* **Download reliability:** **100%** of generated images download cleanly as valid high-resolution PNG/JPG files on Chrome, Safari (iOS), and Android Chrome.
+* **Zero-crash error resilience:** **0** unhandled exceptions or stuck loading spinners across invalid files, oversized uploads, simulated timeouts, and rapid double-clicks.
+* **Storage hygiene:** **100%** of temporary assets in R2 are automatically purged within 24–48 hours via the 1-day lifecycle rule.
+
+---
+
+## 9. Open Questions
+
+1. **HEIC photo support (iPhones):** Many iPhones capture photos in `.heic` format by default. While iOS Safari usually converts `.heic` to `.jpg` automatically during `<input type="file" accept="image/jpeg,image/png,image/webp">`, should v1.1 add an explicit client-side HEIC converter (`heic2any`) for desktop users dragging `.heic` files directly from macOS Photos?
+2. **Output aspect ratio preservation:** Should generated images strictly match the uploaded background photo's aspect ratio (recommended for seamless before/after comparison), or snap to the AI model's nearest standard aspect ratio (e.g., `4:3`, `16:9`, `3:4`)?
+3. **Post-demo guardrails:** Once this transitions from demo to public launch, what daily cap (e.g., 3–5 generations/day per IP via Cloudflare KV or Turnstile bot protection) should be turned on?
